@@ -4223,7 +4223,7 @@ DB.products.forEach(p => {
 </script>
 <script>
 // ==========================================
-// SCRIPT O: WELCOME PAGE (Normal Tab Integration)
+// SCRIPT O: WELCOME PAGE (Final Independent Tab)
 // ==========================================
 (function() {
     // Inject the CSS for the Welcome Screen
@@ -4336,10 +4336,9 @@ DB.products.forEach(p => {
     `;
     document.head.appendChild(style);
 
+    // 1. Inject the "Welcome" tab
     function injectWelcomeTab() {
         const hash = location.hash || '#/';
-        
-        // PC Sidebar
         const nav = document.querySelector('.nav');
         if (nav && !nav.querySelector('a[href="#/welcome"]')) {
             const link = document.createElement('a');
@@ -4348,8 +4347,6 @@ DB.products.forEach(p => {
             link.innerHTML = '<span style="font-size:15px">🏠</span>Welcome';
             nav.insertBefore(link, nav.firstChild);
         }
-
-        // Mobile Bottom Nav
         const mnav = document.getElementById('mobile-nav');
         if (mnav && !mnav.querySelector('a[href="#/welcome"]')) {
             const mlink = document.createElement('a');
@@ -4361,6 +4358,7 @@ DB.products.forEach(p => {
         }
     }
 
+    // 2. Render the Welcome Page
     function renderWelcomeContent(content) {
         const logoHtml = SETTINGS.logo 
             ? `<img src="${SETTINGS.logo}" class="welcome-logo" alt="Logo">`
@@ -4384,20 +4382,23 @@ DB.products.forEach(p => {
         `;
     }
 
+    // 3. Override the router
     const _origRoute = window.route;
     window.route = function() {
         const hash = location.hash || '#/';
         
+        // Welcome Page handles both #/ and #/welcome
         if (hash === '#/' || hash === '#/welcome') {
             if (typeof SESSION !== 'undefined' && SESSION) {
-                window.renderLayout();
-                injectWelcomeTab();
+                window.renderLayout(); 
+                injectWelcomeTab();    
                 const content = document.getElementById('content');
                 if (content) renderWelcomeContent(content);
                 return Promise.resolve();
             }
         }
         
+        // Handle Dashboard explicitly
         if (hash === '#/dashboard') {
             if (typeof SESSION !== 'undefined' && SESSION) {
                 window.renderLayout();
@@ -4411,6 +4412,7 @@ DB.products.forEach(p => {
         return _origRoute.apply(this, arguments);
     };
 
+    // 4. Update active states
     function updateSidebarLinks() {
         const hash = location.hash || '#/';
         const nav = document.querySelector('.nav');
@@ -4438,6 +4440,10 @@ DB.products.forEach(p => {
         updateSidebarLinks();
         setTimeout(updateSidebarLinks, 50);
     };
+
+    // CRITICAL FIX: Disconnect the old router so it stops overwriting the Welcome page!
+    try { window.removeEventListener('hashchange', _origRoute); } catch(e) {}
+    window.addEventListener('hashchange', window.route);
 
     setInterval(updateSidebarLinks, 500);
 })();
