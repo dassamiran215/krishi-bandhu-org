@@ -87,6 +87,44 @@ tr:last-child td{border-bottom:0}tr:hover td{background:var(--s50)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media print{body *{visibility:hidden!important}#print-area,#print-area *{visibility:visible!important}#print-area{position:absolute!important;left:0!important;top:0!important;width:100%!important;box-shadow:none!important;border:0!important;padding:0!important}body{background:#fff!important}#toast-root,#modal-root,#calc-root{display:none!important}}
 @media(max-width:768px){.sidebar{display:none}.mobile-header{display:flex}.main{padding:12px}}
+/* ============================================================
+   STEP 2: PREMIUM PC OPTIMIZATION (Desktop Only)
+   ============================================================ */
+@media (min-width: 1024px) {
+  /* 1. Darker Background for Contrast */
+  body { background: #f1f5f9; }
+
+  /* 2. Wider Main Layout and Sidebar */
+  .main { max-width: 1400px; padding: 28px; }
+  .sidebar { width: 240px; }
+
+  /* 3. Premium Card Styling (Shadow + Hover Lift) */
+  .card {
+    padding: 24px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  }
+
+  /* 4. Smarter Grid Layouts for PC */
+  .grid-4 { grid-template-columns: repeat(5, 1fr); gap: 16px; } /* Dashboard Stats */
+  #prod-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 16px; } /* Products */
+  #content > div > .grid-2 { grid-template-columns: repeat(3, 1fr); gap: 16px; } /* Suppliers */
+  .modal .grid-2 { grid-template-columns: 1fr 1fr !important; } /* Forms stay 2-column */
+
+  /* 5. Table Polish (Fixes Stretching) */
+  table th { padding: 12px 14px; font-size: 13px; background: #f8fafc; }
+  table td { padding: 14px; font-size: 13px; }
+  table td:last-child { white-space: nowrap; width: 1%; text-align: right; } /* Keeps buttons tight */
+  table th:first-child, table td:first-child { width: 15%; } /* Prevents 1st column from stretching */
+
+  /* 6. Modal Spacing */
+  .modal { max-width: 720px; padding: 32px; }
+}
 </style>
 </head>
 <body>
