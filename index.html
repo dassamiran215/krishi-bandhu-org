@@ -1284,20 +1284,47 @@ function renderInvoices(content){
           return `<tr><td><a href="#/invoice/${i.id}" style="font-weight:500">${i.invoice_no}</a></td><td>${esc(c?.name||'Walk-in')}</td><td>${txDT(i,'invoice_date')}</td><td style="text-align:right">${rs(i.total)}</td><td style="text-align:right;color:var(--b700)">${rs(i.paid)}</td><td style="text-align:right;color:${Number(i.due)>0?'var(--r600)':'var(--s400)'};font-weight:${Number(i.due)>0?'600':'400'}">${rs(i.due)}</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-del-inv="${i.id}" style="color:var(--r600)">Del</button></td></tr>`;
         }).join('');
     $$('[data-del-inv]').forEach(b=>b.onclick=async()=>{
-      const inv = DB.invoices.find(x => x.id === b.dataset.delInv);
-      if(!inv) return;
-      const c = DB.customers.find(x => x.id === inv.customer_id);
-      if(!confirmDlg('Delete invoice '+inv.invoice_no+' for ₹'+inr(inv.total)+'?\n\nCustomer: '+(c?.name||'Walk-in')+'\n\nStock will be restored.','Confirm Delete')) return;
-      const items = DB.invoice_items.filter(x => x.invoice_id === inv.id);
-      for(const it of items){
-        const p = DB.products.find(x => x.id === it.product_id);
-        if(p){ const back = lineDeductBaseQty(it); await sb.from('products').update({ stock: Number(p.stock) + back }).eq('id', p.id); }
-      }
-      await sb.from('invoices').delete().eq('id', inv.id);
-      await syncDB();
-      toast('Invoice deleted - stock restored','success');
-      renderTable();
-    });
+  const inv = DB.invoices.find(x => x.id === b.dataset.delInv);
+  if(!inv) return;
+  const c = DB.customers.find(x => x.id === inv.customer_id);
+  if(!confirmDlg('Delete invoice '+inv.invoice_no+' for ₹'+inr(inv.total)+'?\n\nCustomer: '+(c?.name||'Walk-in')+'\n\nStock will be restored.','Confirm Delete')) return;
+
+  // 1. Fetch items FRESH from Supabase (not local cache)
+  const { data: freshItems, error: fetchErr } = await sb.from('invoice_items').select('*').eq('invoice_id', inv.id);
+  if(fetchErr){ toast('Cannot fetch items: '+fetchErr.message, 'error'); return; }
+
+  const items = freshItems || [];
+  const restored = [];
+  const failures = [];
+
+  // 2. Restore each product's stock — fetch fresh value first
+  for(const it of items){
+    if(!it.product_id) continue;
+    const { data: freshProd } = await sb.from('products').select('stock').eq('id', it.product_id).single();
+    if(!freshProd){ failures.push(it.product_name+' (product deleted)'); continue; }
+
+    const baseQty = lineDeductBaseQty(it);
+    const newStock = Number(freshProd.stock) + baseQty;
+    const { error: stkErr } = await sb.from('products').update({ stock: newStock }).eq('id', it.product_id);
+    
+    if(stkErr){ failures.push(it.product_name+' ('+stkErr.message+')'); }
+    else { restored.push(it.product_name+' +'+fmtNum(baseQty)); }
+  }
+
+  // 3. Abort if any stock restore failed — don't lose stock
+  if(failures.length > 0){
+    toast('Stock restore failed for: ' + failures.join(', ') + '. Invoice NOT deleted.', 'error');
+    return;
+  }
+
+  // 4. Now safe to delete the invoice
+  const { error: delErr } = await sb.from('invoices').delete().eq('id', inv.id);
+  if(delErr){ toast('Delete failed: '+delErr.message, 'error'); return; }
+
+  await syncDB();
+  toast('Invoice deleted. Stock restored: ' + (restored.length ? restored.join(', ') : 'none'), 'success');
+  renderTable();
+});
   }
   ['inv-search','inv-sort','inv-filter'].forEach(id => { $('#'+id).oninput = renderTable; $('#'+id).onchange = renderTable; });
   renderTable();
@@ -1413,7 +1440,12 @@ function renderNewInvoice(content){
     const { data: inv, error: invErr } = await sb.from('invoices').insert(invData).select().single();
     if(invErr){ toast(invErr.message,'error'); return null; }
     const itemRows = lines.map(l=>({ invoice_id: inv.id, product_id: l.product_id, product_name: l.product_name, dual: l.dual||false, base_unit: l.base_unit||null, pack_unit: l.pack_unit||null, pack_size: l.pack_size||null, price_base: l.price_base||0, price_pack: l.price_pack||0, unit: l.unit||null, qty: l.qty, price: l.price, total: l.total }));
-    await sb.from('invoice_items').insert(itemRows);
+    const { error: itemsErr } = await sb.from('invoice_items').insert(itemRows);
+if(itemsErr){ 
+  toast('Invoice saved but items failed: ' + itemsErr.message, 'error'); 
+  console.error('invoice_items insert failed:', itemsErr);
+  return null; 
+}
     for(const l of lines){
       const p = DB.products.find(x => x.id === l.product_id);
       if(p){ const ded = lineDeductBaseQty(l); await sb.from('products').update({ stock: Number(p.stock) - ded }).eq('id', p.id); }
@@ -1462,7 +1494,11 @@ async function renderInvoiceView(content, id){
           <div><div style="font-weight:600">${inv.invoice_no}</div><div style="font-size:11px;color:var(--s500)">${txDT(inv,'invoice_date')}</div></div>
           <div style="text-align:right"><div style="font-weight:600">${esc(cust?.name||'Walk-in')}</div>${cust?.phone?`<div style="font-size:11px;color:var(--s500)">${esc(cust.phone)}</div>`:''}</div>
         </div>
-        <table style="font-size:12px;margin-bottom:10px"><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amt</th></tr></thead><tbody>${items.map(i=>`<tr><td>${esc(productLineLabel(i))}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">₹${i.price}</td><td style="text-align:right">${rs(i.total)}</td></tr>`).join('')}</tbody></table>
+        <table style="font-size:12px;margin-bottom:10px"><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amt</th></tr></thead><tbody>${
+  items.length === 0 
+    ? '<tr><td colspan="4" style="text-align:center;color:var(--r600);padding:14px;font-size:11px">⚠ No items found for this invoice. Check Supabase invoice_items table.</td></tr>'
+    : items.map(i=>`<tr><td>${esc(productLineLabel(i))}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">₹${i.price}</td><td style="text-align:right">${rs(i.total)}</td></tr>`).join('')
+}</tbody></table>
         <div style="border-top:1px dashed var(--s300);padding-top:10px;font-size:13px;display:flex;flex-direction:column;gap:4px">
           <div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>${rs(inv.subtotal)}</span></div>
           ${Number(inv.discount)>0?`<div style="display:flex;justify-content:space-between"><span>Discount</span><span>-${rs(inv.discount)}</span></div>`:''}
