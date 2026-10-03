@@ -1505,10 +1505,34 @@ function renderNewInvoice(content){
 }
 
 async function renderInvoiceView(content, id){
-  const inv = DB.invoices.find(x => x.id === id);
-  if(!inv){ content.innerHTML = '<p>Not found</p>'; return; }
-  const items = DB.invoice_items.filter(i => i.invoice_id === id);
+  // 1. Show loading immediately
+  content.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading invoice...</div></div>';
+
+  // 2. Find invoice — from cache first, then Supabase
+  let inv = DB.invoices.find(x => x.id === id);
+  if(!inv){
+    const { data } = await sb.from('invoices').select('*').eq('id', id).maybeSingle();
+    if(!data){ content.innerHTML = '<p>Invoice not found</p>'; return; }
+    inv = data;
+  }
+
+  // 3. ALWAYS fetch fresh items from Supabase — never trust cache for this
+  let items = [];
+  try {
+    const { data: freshItems, error: itemErr } = await sb.from('invoice_items').select('*').eq('invoice_id', id);
+    if(itemErr) console.warn('Could not load items:', itemErr.message);
+    items = freshItems || [];
+    // Sync cache so other pages use the fresh data too
+    if(items.length){
+      DB.invoice_items = DB.invoice_items.filter(x => x.invoice_id !== id).concat(items);
+    }
+  } catch(e){
+    // Network fallback — use cache
+    items = DB.invoice_items.filter(i => i.invoice_id === id);
+  }
+
   const cust = DB.customers.find(c => c.id === inv.customer_id);
+
   content.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:16px">
       <a href="#/invoices" style="color:var(--s500);font-size:13px">Back</a>
@@ -1526,10 +1550,10 @@ async function renderInvoiceView(content, id){
           <div style="text-align:right"><div style="font-weight:600">${esc(cust?.name||'Walk-in')}</div>${cust?.phone?`<div style="font-size:11px;color:var(--s500)">${esc(cust.phone)}</div>`:''}</div>
         </div>
         <table style="font-size:12px;margin-bottom:10px"><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amt</th></tr></thead><tbody>${
-  items.length === 0 
-    ? '<tr><td colspan="4" style="text-align:center;color:var(--r600);padding:14px;font-size:11px">⚠ No items found for this invoice. Check Supabase invoice_items table.</td></tr>'
-    : items.map(i=>`<tr><td>${esc(productLineLabel(i))}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">₹${i.price}</td><td style="text-align:right">${rs(i.total)}</td></tr>`).join('')
-}</tbody></table>
+          items.length === 0 
+            ? '<tr><td colspan="4" style="text-align:center;color:var(--r600);padding:14px;font-size:11px">⚠ No items found for this invoice. Check Supabase invoice_items table.</td></tr>'
+            : items.map(i=>`<tr><td>${esc(productLineLabel(i))}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">₹${i.price}</td><td style="text-align:right">${rs(i.total)}</td></tr>`).join('')
+        }</tbody></table>
         <div style="border-top:1px dashed var(--s300);padding-top:10px;font-size:13px;display:flex;flex-direction:column;gap:4px">
           <div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>${rs(inv.subtotal)}</span></div>
           ${Number(inv.discount)>0?`<div style="display:flex;justify-content:space-between"><span>Discount</span><span>-${rs(inv.discount)}</span></div>`:''}
@@ -1548,6 +1572,7 @@ async function renderInvoiceView(content, id){
         ${cust?.phone?`<a target="_blank" class="btn" style="background:#16a34a;color:#fff" id="btn-wa" href="#">WhatsApp</a>`:''}
       </div>
     </div>`;
+
   if(Number(inv.due)>0){ try{ const url = await QRCode.toDataURL(upiLink(inv.due,'Invoice '+inv.invoice_no),{margin:1,width:160}); $('#qr-box').innerHTML = `<img src="${url}" style="width:120px;height:120px;display:block">`; }catch(e){} }
   $('#btn-print').onclick = () => window.print();
   $('#btn-print-a4').onclick = () => {
