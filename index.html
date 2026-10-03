@@ -1437,15 +1437,46 @@ function renderNewInvoice(content){
     const due = Math.max(0,total-paid);
     const no = nextInvoiceNo();
     const invData = { invoice_no: no, customer_id: custId, subtotal, discount: disc, total, paid, due, notes, invoice_date: dv, tx_time: tv };
-    const { data: inv, error: invErr } = await sb.from('invoices').insert(invData).select().single();
-    if(invErr){ toast(invErr.message,'error'); return null; }
-    const itemRows = lines.map(l=>({ invoice_id: inv.id, product_id: l.product_id, product_name: l.product_name, dual: l.dual||false, base_unit: l.base_unit||null, pack_unit: l.pack_unit||null, pack_size: l.pack_size||null, price_base: l.price_base||0, price_pack: l.price_pack||0, unit: l.unit||null, qty: l.qty, price: l.price, total: l.total }));
-    const { error: itemsErr } = await sb.from('invoice_items').insert(itemRows);
-if(itemsErr){ 
-  toast('Invoice saved but items failed: ' + itemsErr.message, 'error'); 
-  console.error('invoice_items insert failed:', itemsErr);
-  return null; 
-}
+        const { error: invErr } = await sb.from('invoices').insert(invData);
+    if(invErr){ toast('Invoice save failed: '+invErr.message,'error'); return null; }
+
+    const { data: fetched, error: fErr } = await sb.from('invoices')
+      .select('id')
+      .eq('invoice_no', no)
+      .maybeSingle();
+
+    if(fErr || !fetched || !fetched.id){
+      toast('Could not get invoice ID: ' + (fErr && fErr.message ? fErr.message : 'not found'),'error');
+      return null;
+    }
+    const inv = { id: fetched.id };
+
+    const itemRows = lines.map(function(l){
+      return {
+        invoice_id: inv.id,
+        product_id: l.product_id || null,
+        product_name: String(l.product_name || ''),
+        dual: !!l.dual,
+        base_unit: l.base_unit || null,
+        pack_unit: l.pack_unit || null,
+        pack_size: l.pack_size === undefined ? null : l.pack_size,
+        price_base: Number(l.price_base) || 0,
+        price_pack: Number(l.price_pack) || 0,
+        unit: l.unit || null,
+        qty: Number(l.qty) || 0,
+        price: Number(l.price) || 0,
+        total: Number(l.total) || 0
+      };
+    });
+
+    const { error: itemErr } = await sb.from('invoice_items').insert(itemRows);
+    if(itemErr){
+      console.error('invoice_items insert failed:', itemErr);
+      toast('Items NOT saved: ' + itemErr.message, 'error');
+      await sb.from('invoices').delete().eq('id', inv.id);
+      return null;
+    }
+
     for(const l of lines){
       const p = DB.products.find(x => x.id === l.product_id);
       if(p){ const ded = lineDeductBaseQty(l); await sb.from('products').update({ stock: Number(p.stock) - ded }).eq('id', p.id); }
