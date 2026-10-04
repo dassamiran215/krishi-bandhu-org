@@ -3902,8 +3902,10 @@ DB.products.forEach(p => {
 </script>
 <script>
 // ==========================================
-// SCRIPT N: MARGIN TAB (ES5-safe, no double render)
-// Per-invoice profit + margin %
+// SCRIPT N: MARGIN TAB (FIXED v2)
+// - Always fetches ALL invoice_items with pagination (no 1000-row cap)
+// - Never trusts the main app's truncated cache
+// - Never hides invoices; shows 0 profit if truly no items
 // ==========================================
 (function() {
   'use strict';
@@ -3913,7 +3915,7 @@ DB.products.forEach(p => {
   var customTo = '';
   var sortBy = 'date-desc';
 
-  // ---- ES5 helpers ----
+  // ---- ES5-safe helpers ----
   function findById(arr, id, key) {
     key = key || 'id';
     for (var i = 0; i < arr.length; i++) {
@@ -3932,6 +3934,34 @@ DB.products.forEach(p => {
     }
   }
 
+  // ---- Paginated fetch: gets ALL invoice_items, no 1000-row limit ----
+  async function fetchAllInvoiceItems() {
+    var all = [];
+    var pageSize = 1000;
+    var from = 0;
+    var safety = 0;
+    while (true) {
+      safety++;
+      if (safety > 200) break; // hard stop at 200,000 rows
+      try {
+        var res = await sb.from('invoice_items').select('*').range(from, from + pageSize - 1);
+        if (res.error) {
+          console.warn('invoice_items fetch error:', res.error.message);
+          break;
+        }
+        var chunk = res.data || [];
+        all = all.concat(chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+      } catch (e) {
+        console.warn('invoice_items fetch threw:', e);
+        break;
+      }
+    }
+    return all;
+  }
+
+  // ---- Range helpers ----
   function rangeFor(preset, cf, ct) {
     var today = todayStr();
     if (preset === 'today') return { from: today, to: today };
@@ -4001,7 +4031,18 @@ DB.products.forEach(p => {
     };
   }
 
-  function renderMargin(content) {
+  // ---- Main render ----
+  async function renderMargin(content) {
+    // Show loading spinner
+    content.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading Margin data...</div></div>';
+
+    // Always fetch fresh — the main app's syncDB() caps at 1000 rows, so we can't trust the cache
+    var freshItems = await fetchAllInvoiceItems();
+    if (freshItems.length) {
+      DB.invoice_items = freshItems;
+    }
+
+    // Build UI
     content.innerHTML = '' +
       '<div style="display:flex;flex-direction:column;gap:16px">' +
         '<div class="page-head">' +
@@ -4073,16 +4114,12 @@ DB.products.forEach(p => {
       for (var i = 0; i < DB.invoices.length; i++) {
         var inv = DB.invoices[i];
         var no = inv.invoice_no || '';
-        if (no.indexOf('OLD-') === 0) continue;
-        if (no.indexOf('RET-') === 0) continue;
-        var hasItems = false;
-        for (var j = 0; j < DB.invoice_items.length; j++) {
-          if (DB.invoice_items[j].invoice_id === inv.id) { hasItems = true; break; }
-        }
-        if (!hasItems) continue;
+        if (no.indexOf('OLD-') === 0) continue;   // skip old-due placeholders
+        if (no.indexOf('RET-') === 0) continue;   // skip return credit notes
         var d = txDate(inv, 'invoice_date');
         if (d < r.from || d > r.to) continue;
         arr.push(inv);
+        // NOTE: no more "if (!hasItems) continue" — we always include invoices.
       }
       for (var k = 0; k < arr.length; k++) {
         arr[k].__mg = invoiceMetrics(arr[k]);
@@ -4141,8 +4178,9 @@ DB.products.forEach(p => {
           var c = findById(DB.customers, inv.customer_id);
           var m = inv.__mg;
           var pCol = m.profit >= 0 ? '#15803d' : '#dc2626';
+          var noItems = m.items.length === 0;
           html += '<tr style="cursor:pointer" data-mg-id="' + inv.id + '">' +
-            '<td style="font-weight:500">' + esc(inv.invoice_no) + '</td>' +
+            '<td style="font-weight:500">' + esc(inv.invoice_no) + (noItems ? ' <span style="color:var(--r600);font-size:10px">(no items)</span>' : '') + '</td>' +
             '<td>' + esc(c ? c.name : 'Walk-in') + '</td>' +
             '<td>' + txDT(inv, 'invoice_date') + '</td>' +
             '<td style="text-align:right">' + rs(m.revenue) + '</td>' +
@@ -4200,23 +4238,27 @@ DB.products.forEach(p => {
       var pCol = m.profit >= 0 ? '#15803d' : '#dc2626';
 
       var rowsHtml = '';
-      for (var i = 0; i < m.items.length; i++) {
-        var d = m.items[i];
-        var it = d.item;
-        var pName = it.product_name || (d.product ? d.product.name : 'Unknown');
-        var pCol2 = d.profit >= 0 ? '#15803d' : '#dc2626';
-        var costNote = d.product ? '' : ' <span style="color:var(--r600);font-size:10px">(product deleted)</span>';
-        rowsHtml += '' +
-          '<tr>' +
-            '<td>' + esc(pName) + costNote + '</td>' +
-            '<td style="text-align:right">' + fmtNum(it.qty) + ' ' + esc(it.unit || '') + '</td>' +
-            '<td style="text-align:right">' + rs(it.price) + '</td>' +
-            '<td style="text-align:right">' + rs(d.netRevenue) + '</td>' +
-            '<td style="text-align:right;color:#c79a28">' + rs(d.costPerBase) + '</td>' +
-            '<td style="text-align:right;color:#c79a28">' + rs(d.cost) + '</td>' +
-            '<td style="text-align:right;font-weight:600;color:' + pCol2 + '">' + rs(d.profit) + '</td>' +
-            '<td style="text-align:right;color:' + pCol2 + '">' + d.margin.toFixed(1) + '%</td>' +
-          '</tr>';
+      if (m.items.length === 0) {
+        rowsHtml = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--s500)">No items found for this invoice. It may be an old-due entry or the items were deleted.</td></tr>';
+      } else {
+        for (var i = 0; i < m.items.length; i++) {
+          var d = m.items[i];
+          var it = d.item;
+          var pName = it.product_name || (d.product ? d.product.name : 'Unknown');
+          var pCol2 = d.profit >= 0 ? '#15803d' : '#dc2626';
+          var costNote = d.product ? '' : ' <span style="color:var(--r600);font-size:10px">(product deleted)</span>';
+          rowsHtml += '' +
+            '<tr>' +
+              '<td>' + esc(pName) + costNote + '</td>' +
+              '<td style="text-align:right">' + fmtNum(it.qty) + ' ' + esc(it.unit || '') + '</td>' +
+              '<td style="text-align:right">' + rs(it.price) + '</td>' +
+              '<td style="text-align:right">' + rs(d.netRevenue) + '</td>' +
+              '<td style="text-align:right;color:#c79a28">' + rs(d.costPerBase) + '</td>' +
+              '<td style="text-align:right;color:#c79a28">' + rs(d.cost) + '</td>' +
+              '<td style="text-align:right;font-weight:600;color:' + pCol2 + '">' + rs(d.profit) + '</td>' +
+              '<td style="text-align:right;color:' + pCol2 + '">' + d.margin.toFixed(1) + '%</td>' +
+            '</tr>';
+        }
       }
 
       openModal('' +
@@ -4282,7 +4324,7 @@ DB.products.forEach(p => {
     render();
   }
 
-  // ---------- SIDEBAR ----------
+  // ---- Sidebar injection ----
   function injectSidebarLink() {
     var hash = location.hash || '#/';
     var nav = document.querySelector('.nav');
@@ -4314,7 +4356,7 @@ DB.products.forEach(p => {
     }
   }
 
-  // ---------- ROUTE HOOK ----------
+  // ---- Route hook ----
   var _origRoute = window.route;
   var _origRenderLayout = window.renderLayout;
 
@@ -4330,7 +4372,7 @@ DB.products.forEach(p => {
       try {
         window.renderLayout();
         var content = document.getElementById('content');
-        if (content) renderMargin(content);
+        if (content) return renderMargin(content);
         return Promise.resolve();
       } catch (e) {
         console.error('margin route', e);
@@ -4344,14 +4386,13 @@ DB.products.forEach(p => {
   try { window.removeEventListener('hashchange', _origRoute); } catch(e) {}
   window.addEventListener('hashchange', window.route);
 
-  // Refresh-on-margin fallback (only renders if nothing exists yet)
+  // If page loaded directly on #/margin, trigger render
   var tries = 0;
   (function waitBoot() {
     tries++;
     if (tries > 60) return;
     if (location.hash !== '#/margin') return;
     if (typeof SESSION === 'undefined' || !SESSION) { setTimeout(waitBoot, 300); return; }
-    // Guard against double-render: if margin content already present, skip
     if (document.getElementById('mg-body')) return;
     window.route();
   })();
