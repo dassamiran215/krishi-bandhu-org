@@ -4400,5 +4400,87 @@ DB.products.forEach(p => {
   setInterval(injectSidebarLink, 500);
 })();
 </script>
+<script>
+// ==========================================
+// MAGNETIC SIDEBAR EFFECT
+// Pulls nav links + footer buttons toward cursor within 120px.
+// No glassmorphism. No DB calls. Visual only.
+// ==========================================
+(function() {
+  'use strict';
+
+  var THRESHOLD = 120;   // px — how close the cursor must be
+  var STRENGTH  = 0.15;  // 15% pull toward cursor
+  var SELECTOR  = '.nav a, #btn-calc, #btn-lang, #btn-logout';
+
+  // Only add the transition + GPU hint. No other styling.
+  var style = document.createElement('style');
+  style.textContent =
+    '.nav a, #btn-calc, #btn-lang, #btn-logout {' +
+    '  transition: transform 0.3s ease-out;' +
+    '  will-change: transform;' +
+    '}';
+  document.head.appendChild(style);
+
+  var mouseX = -9999, mouseY = -9999;
+  var ticking = false;
+
+  function apply() {
+    ticking = false;
+
+    // Skip entirely on touch / small screens (no cursor, sidebar hidden)
+    if (window.innerWidth <= 768) return;
+
+    var list = document.querySelectorAll(SELECTOR);
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+
+      // Skip hidden elements (e.g. sidebar hidden on mobile)
+      if (!el.offsetParent) continue;
+
+      var rect = el.getBoundingClientRect();
+      var cx = rect.left + rect.width  / 2;
+      var cy = rect.top  + rect.height / 2;
+
+      var dx = mouseX - cx;
+      var dy = mouseY - cy;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < THRESHOLD) {
+        var tx = (dx * STRENGTH).toFixed(2);
+        var ty = (dy * STRENGTH).toFixed(2);
+        el.style.transform = 'translate(' + tx + 'px, ' + ty + 'px)';
+      } else {
+        if (el.style.transform) el.style.transform = '';
+      }
+    }
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(apply);
+    }
+  }, { passive: true });
+
+  // When cursor leaves the window, snap everything back
+  document.addEventListener('mouseleave', function() {
+    var list = document.querySelectorAll(SELECTOR);
+    for (var i = 0; i < list.length; i++) {
+      list[i].style.transform = '';
+    }
+  });
+
+  // Safety net: if sidebar rebuilds and user hasn't moved mouse, no residue
+  window.addEventListener('hashchange', function() {
+    var list = document.querySelectorAll(SELECTOR);
+    for (var i = 0; i < list.length; i++) {
+      list[i].style.transform = '';
+    }
+  });
+})();
+</script>
 </body>
 </html>
