@@ -4482,5 +4482,90 @@ DB.products.forEach(p => {
   });
 })();
 </script>
+<script>
+// ==========================================
+// TACTILE LIFT & CONTEXTUAL GLOW — CONTENT BUTTONS ONLY
+// Applies to .btn inside page content (Quick actions, Stock/Edit/Del,
+// date filters, Print/PDF, modals, etc.)
+// SKIPS sidebar Calculator / বাংলা / Sign out (those have magnetic effect)
+// No glassmorphism. No DB calls. Existing code untouched.
+// ==========================================
+(function() {
+  'use strict';
+
+  // Buttons to EXCLUDE (sidebar — magnetic effect handles these)
+  var EXCLUDE_IDS = ['btn-calc', 'btn-lang', 'btn-logout', 'btn-calc-m', 'btn-logout-m'];
+
+  var style = document.createElement('style');
+  style.textContent =
+    '.btn {' +
+    '  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),' +
+    '              box-shadow 0.28s ease-out,' +
+    '              opacity 0.15s ease-out;' +
+    '}' +
+    // Only apply lift when the button is inside #content (page content area)
+    '#content .btn:hover:not(:disabled),' +
+    '#modal-root .btn:hover:not(:disabled) {' +
+    '  transform: translateY(-3px) !important;' +
+    '  box-shadow: 0 8px 18px -4px rgba(var(--btn-glow, 100, 116, 139), 0.45),' +
+    '              0 4px 8px -2px rgba(var(--btn-glow, 100, 116, 139), 0.25);' +
+    '}' +
+    '#content .btn:active:not(:disabled),' +
+    '#modal-root .btn:active:not(:disabled) {' +
+    '  transform: translateY(-1px) scale(0.98) !important;' +
+    '  box-shadow: 0 2px 5px -1px rgba(var(--btn-glow, 100, 116, 139), 0.28);' +
+    '  transition-duration: 0.08s;' +
+    '}' +
+    '#content .btn:disabled,' +
+    '#modal-root .btn:disabled {' +
+    '  transform: none !important;' +
+    '  box-shadow: none !important;' +
+    '}';
+  document.head.appendChild(style);
+
+  // ---- Compute glow RGB from each button's background ----
+  function computeGlow(el) {
+    var cs = getComputedStyle(el);
+    var bg = cs.backgroundColor || '';
+    var m = bg.match(/[\d.]+/g);
+    var r, g, b, alpha = 1;
+    if (m && m.length >= 3) {
+      r = +m[0]; g = +m[1]; b = +m[2];
+      alpha = m.length >= 4 ? +m[3] : 1;
+    }
+    // Ghost/transparent → use text color
+    if (!m || m.length < 3 || alpha < 0.1) {
+      var tc = (cs.color || '').match(/[\d.]+/g);
+      if (tc && tc.length >= 3) { r = +tc[0]; g = +tc[1]; b = +tc[2]; }
+      else { r = 100; g = 116; b = 139; }
+    }
+    // Very light → darken so glow is visible
+    var avg = (r + g + b) / 3;
+    if (avg > 200) {
+      r = Math.round(r * 0.55);
+      g = Math.round(g * 0.55);
+      b = Math.round(b * 0.55);
+    }
+    return r + ', ' + g + ', ' + b;
+  }
+
+  // ---- Tag every eligible .btn with its glow color ----
+  function scan() {
+    var btns = document.querySelectorAll('#content .btn, #modal-root .btn');
+    for (var i = 0; i < btns.length; i++) {
+      var el = btns[i];
+      if (el.__glowDone) continue;
+      // Skip excluded sidebar buttons
+      if (el.id && EXCLUDE_IDS.indexOf(el.id) !== -1) continue;
+      var glow = computeGlow(el);
+      if (glow) el.style.setProperty('--btn-glow', glow);
+      el.__glowDone = true;
+    }
+  }
+
+  scan();
+  setInterval(scan, 500); // catch dynamically added buttons (modals, route changes)
+})();
+</script>
 </body>
 </html>
