@@ -285,26 +285,56 @@ function supplierTotals(sid){
 }
 
 /* ============ SUPABASE SYNC ============ */
+// Fetch ALL invoice_items with pagination (bypasses Supabase 1000-row cap)
+// Fully self-contained: if it fails, it just returns what it managed to fetch,
+// and the rest of syncDB continues normally.
+async function fetchAllInvoiceItemsPaginated() {
+  var all = [];
+  var pageSize = 1000;
+  var from = 0;
+  var safety = 0;
+  while (true) {
+    safety++;
+    if (safety > 200) break; // hard stop at 200,000 rows — never infinite
+    try {
+      var res = await sb.from('invoice_items').select('*').range(from, from + pageSize - 1);
+      if (res.error) {
+        console.warn('invoice_items page fetch error:', res.error.message);
+        break;
+      }
+      var chunk = res.data || [];
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break; // last page
+      from += pageSize;
+    } catch (e) {
+      // Network or unexpected error → stop, keep what we have
+      console.warn('invoice_items page fetch threw:', e && e.message);
+      break;
+    }
+  }
+  return all;
+}
+
 async function syncDB(){
   try{
-    const [cust, prod, inv, items, pays, sup, sinv, spays, ret, sett] = await Promise.all([
+    const [cust, prod, inv, pays, sup, sinv, spays, ret, sett, allItems] = await Promise.all([
       sb.from('customers').select('*').order('created_at',{ascending:false}),
       sb.from('products').select('*').order('name'),
       sb.from('invoices').select('*').order('invoice_date',{ascending:false}),
-      sb.from('invoice_items').select('*'),
       sb.from('payments').select('*').order('payment_date',{ascending:false}),
       sb.from('suppliers').select('*').order('name'),
       sb.from('supplier_invoices').select('*').order('bill_date',{ascending:false}),
       sb.from('supplier_payments').select('*').order('payment_date',{ascending:false}),
       sb.from('returns').select('*').order('return_date',{ascending:false}),
-      sb.from('settings').select('*').eq('id',1).maybeSingle()
+      sb.from('settings').select('*').eq('id',1).maybeSingle(),
+      fetchAllInvoiceItemsPaginated()
     ]);
     if(cust.error) console.warn('cust', cust.error.message);
     if(prod.error) console.warn('prod', prod.error.message);
     DB.customers = cust.data || [];
     DB.products = prod.data || [];
     DB.invoices = inv.data || [];
-    DB.invoice_items = items.data || [];
+    DB.invoice_items = allItems || [];
     DB.payments = pays.data || [];
     DB.suppliers = sup.data || [];
     DB.supplier_invoices = sinv.data || [];
