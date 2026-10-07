@@ -121,6 +121,15 @@ tr:last-child td{border-bottom:0}tr:hover td{background:var(--s50)}
   .modal { max-width: 720px; padding: 32px; }
 }
 </style>
+   <script>
+(function(){
+  try {
+    if (localStorage.getItem('kb_theme') === 'dark') {
+      document.documentElement.setAttribute('data-theme','dark');
+    }
+  } catch(e){}
+})();
+</script>
 </head>
 <body>
 <div id="error-box" style="position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:12px;font-size:11px;font-family:monospace;z-index:99999;display:none;white-space:pre-wrap;max-height:50vh;overflow:auto"></div>
@@ -4805,6 +4814,151 @@ DB.products.forEach(p => {
 
   scan();
   setInterval(scan, 500); // catch dynamically added buttons (modals, route changes)
+})();
+</script>
+   <style id="kb-dark-css">
+[data-theme="dark"] {
+  --b50: #052e16;
+  --b100: #14532d;
+  --b500: #22c55e;
+  --b600: #16a34a;
+  --b700: #4ade80;
+  --s50: #0f172a;
+  --s100: #1e293b;
+  --s200: #334155;
+  --s300: #475569;
+  --s400: #64748b;
+  --s500: #94a3b8;
+  --s600: #cbd5e1;
+  --s700: #e2e8f0;
+  --s800: #f1f5f9;
+  --gold: #d4a53a;
+}
+[data-theme="dark"] body { background:#0f172a !important; color:#f1f5f9; }
+[data-theme="dark"] .card { background:#1e293b !important; border-color:#334155 !important; box-shadow: 0 4px 6px -1px rgba(0,0,0,.4), 0 2px 4px -2px rgba(0,0,0,.3) !important; }
+[data-theme="dark"] .card:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,.6), 0 10px 10px -5px rgba(0,0,0,.4) !important; }
+[data-theme="dark"] .sidebar { background:#1e293b !important; border-color:#334155 !important; }
+[data-theme="dark"] .mobile-header { background:#1e293b !important; border-color:#334155 !important; }
+[data-theme="dark"] .modal { background:#1e293b !important; }
+[data-theme="dark"] .modal-overlay { background: rgba(0,0,0,.7) !important; }
+[data-theme="dark"] .input { background:#0f172a !important; border-color:#334155 !important; color:#f1f5f9 !important; }
+[data-theme="dark"] .input:focus { border-color:#22c55e !important; box-shadow: 0 0 0 3px rgba(34,197,94,.2) !important; }
+[data-theme="dark"] .input::placeholder { color:#64748b !important; }
+[data-theme="dark"] .btn-ghost { background:#334155 !important; color:#e2e8f0 !important; }
+[data-theme="dark"] .btn-ghost:hover { background:#475569 !important; }
+[data-theme="dark"] .calc { background:#1e293b !important; }
+[data-theme="dark"] .calc-display { background:#0f172a !important; color:#f1f5f9 !important; }
+[data-theme="dark"] .calc-keys button { background:#334155 !important; color:#f1f5f9 !important; }
+[data-theme="dark"] .ss-dropdown { background:#1e293b !important; border-color:#334155 !important; }
+[data-theme="dark"] .ss-item { border-color:#334155 !important; }
+[data-theme="dark"] .ss-item:hover, [data-theme="dark"] .ss-item.active { background:#334155 !important; }
+[data-theme="dark"] .ss-add { background:#0f172a !important; border-color:#334155 !important; }
+[data-theme="dark"] .ss-add:hover { background:#334155 !important; }
+[data-theme="dark"] .mini-stat { background:#0f172a !important; }
+[data-theme="dark"] table th { background:#0f172a !important; color:#94a3b8 !important; border-color:#334155 !important; }
+[data-theme="dark"] table td { border-color:#1e293b !important; }
+[data-theme="dark"] tr:hover td { background:#0f172a !important; }
+[data-theme="dark"] .nav a { color:#94a3b8; }
+[data-theme="dark"] .nav a:hover { background:#334155 !important; color:#f1f5f9 !important; }
+[data-theme="dark"] .nav a.active { background:#14532d !important; color:#4ade80 !important; }
+[data-theme="dark"] .brand-text { color:#4ade80 !important; }
+[data-theme="dark"] h1, [data-theme="dark"] h2, [data-theme="dark"] h3 { color:#f1f5f9; }
+[data-theme="dark"] .label { color:#cbd5e1; }
+[data-theme="dark"] .page-head p, [data-theme="dark"] .page-head h1 { color:#f1f5f9; }
+[data-theme="dark"] [style*="background:#fff"],
+[data-theme="dark"] [style*="background: #fff"],
+[data-theme="dark"] [style*="background:#ffffff"],
+[data-theme="dark"] [style*="background:white"] { background:#1e293b !important; }
+[data-theme="dark"] [style*="background:#f8fafc"] { background:#0f172a !important; }
+[data-theme="dark"] [style*="background:#f1f5f9"] { background:#334155 !important; }
+[data-theme="dark"] [style*="background:#fef2f2"] { background:#450a0a !important; border-color:#7f1d1d !important; }
+[data-theme="dark"] [style*="background:#f0fdf4"] { background:#052e16 !important; border-color:#14532d !important; }
+[data-theme="dark"] [style*="background:#eff6ff"] { background:#172554 !important; border-color:#1e3a8a !important; }
+[data-theme="dark"] [style*="background:#fefce8"] { background:#422006 !important; border-color:#713f12 !important; }
+[data-theme="dark"] [style*="background:#fff3e0"] { background:#431407 !important; border-color:#7c2d12 !important; }
+[data-theme="dark"] [style*="background:#e8f5e9"] { background:#052e16 !important; border-color:#14532d !important; }
+[data-theme="dark"] [style*="background:#dcfce7"] { background:#14532d !important; }
+[data-theme="dark"] [style*="background:#fee2e2"] { background:#7f1d1d !important; }
+[data-theme="dark"] [style*="background:#e2e8f0"] { background:#334155 !important; }
+[data-theme="dark"] [style*="color:#e65100"] { color:#fb923c !important; }
+[data-theme="dark"] [style*="color:#2e7d32"] { color:#4ade80 !important; }
+[data-theme="dark"] [style*="color:#166534"] { color:#4ade80 !important; }
+[data-theme="dark"] [style*="color:#1e40af"] { color:#93c5fd !important; }
+[data-theme="dark"] [style*="color:#1e3a8a"] { color:#bfdbfe !important; }
+[data-theme="dark"] [style*="color:#14532d"] { color:#4ade80 !important; }
+[data-theme="dark"] [style*="color:#713f12"] { color:#fcd34d !important; }
+[data-theme="dark"] [style*="color:#854d0e"] { color:#fcd34d !important; }
+@media print {
+  [data-theme="dark"] { 
+    --s50: #f8fafc; --s100: #f1f5f9; --s200: #e2e8f0; --s300: #cbd5e1;
+    --s400: #94a3b8; --s500: #64748b; --s600: #475569; --s700: #334155; --s800: #1e293b;
+    --b50: #f0fdf4; --b100: #dcfce7; --b700: #15803d;
+  }
+  [data-theme="dark"] .card,
+  [data-theme="dark"] #print-area,
+  [data-theme="dark"] body { background:#fff !important; color:#1e293b !important; }
+}
+</style>
+   <script>
+(function() {
+  'use strict';
+
+  var THEME_KEY = 'kb_theme';
+
+  function getTheme() {
+    try { return localStorage.getItem(THEME_KEY) || 'light'; } catch(e) { return 'light'; }
+  }
+
+  function applyTheme() {
+    if (getTheme() === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  function setTheme(t) {
+    try { localStorage.setItem(THEME_KEY, t); } catch(e) {}
+    applyTheme();
+  }
+
+  applyTheme();
+
+  function injectToggleCard() {
+    if (location.hash !== '#/myshop') return;
+    var content = document.getElementById('content');
+    if (!content) return;
+    if (content.querySelector('#kb-theme-card')) return;
+
+    var h1 = content.querySelector('h1');
+    if (!h1) return;
+
+    var isDark = getTheme() === 'dark';
+    var card = document.createElement('div');
+    card.id = 'kb-theme-card';
+    card.className = 'card';
+    card.innerHTML =
+      '<h2 style="font-weight:600;margin-bottom:12px">Appearance</h2>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:200px">' +
+          '<div style="font-weight:500">' + (isDark ? '🌙 Dark Mode (ON)' : '☀️ Light Mode (ON)') + '</div>' +
+          '<div style="font-size:12px;color:var(--s500);margin-top:2px">Switch the entire app between light and dark theme.</div>' +
+        '</div>' +
+        '<button id="kb-theme-toggle" class="btn ' + (isDark ? 'btn-ghost' : 'btn-primary') + '" style="min-width:140px;justify-content:center">' +
+          (isDark ? '☀️ Switch to Light' : '🌙 Switch to Dark') +
+        '</button>' +
+      '</div>';
+
+    h1.insertAdjacentElement('afterend', card);
+
+    card.querySelector('#kb-theme-toggle').onclick = function() {
+      setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+      if (typeof route === 'function') route();
+    };
+  }
+
+  setInterval(injectToggleCard, 400);
+  injectToggleCard();
 })();
 </script>
 </body>
