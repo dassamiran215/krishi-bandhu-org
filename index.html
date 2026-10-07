@@ -723,6 +723,7 @@ function toggleCalc(){
 /* ====== CONTINUE TO CHUNK 2 ====== */
 /* ============ DASHBOARD ============ */
 function renderDashboard(content){
+  // ---- Data ----
   const inv = DB.invoices;
   const sales = inv.reduce((s,i)=>s+Number(i.total),0);
   const due = inv.reduce((s,i)=>s+Number(i.due),0);
@@ -731,32 +732,219 @@ function renderDashboard(content){
   const low = DB.products.filter(p=>isLowStock(p));
   const supDue = DB.suppliers.reduce((s,su)=>s+supplierTotals(su.id).total_due,0);
   const overdue = getOverdue30();
+
+  // ---- Counts for parties overview ----
+  const custWithDue = DB.customers.filter(c => Number(c.due) > 0).length;
+  const supWithDue = DB.suppliers.filter(s => supplierTotals(s.id).total_due > 0).length;
+  const lowCount = low.length;
+  const outCount = DB.products.filter(p => isOutOfStock(p)).length;
+
+  // ---- Last 12 months sales ----
+  const monthMap = {};
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    monthMap[key] = 0;
+  }
+  DB.invoices.forEach(inv2 => {
+    const d = txDate(inv2, 'invoice_date');
+    if (!d) return;
+    const key = String(d).slice(0,7);
+    if (key in monthMap) monthMap[key] += Number(inv2.total||0);
+  });
+  const monthKeys = Object.keys(monthMap);
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const prettyLabels = monthKeys.map(k => {
+    const parts = k.split('-');
+    return monthNames[parseInt(parts[1],10)-1] + " '" + parts[0].slice(2);
+  });
+  const monthlyValues = monthKeys.map(k => monthMap[k]);
+
+  // ---- KPI cards ----
   const cards = [
-    ['Total Sales',rs(sales),'$','linear-gradient(135deg,#22c55e,#16a34a)','total-sales'],
-    ["Today's Sales",rs(todaySales),'^','linear-gradient(135deg,#3b82f6,#1d4ed8)','today-sales'],
-    ['Customer Due',rs(due),'!','linear-gradient(135deg,#ef4444,#b91c1c)','cust-due'],
-    ['Overdue 30+ days',rs(overdue.total),'!!','linear-gradient(135deg,#991b1b,#7f1d1d)','overdue30'],
-    ['Supplier Due',rs(supDue),'T','linear-gradient(135deg,#c79a28,#a3781a)','sup-due']
+    { label:'Total Sales', value: rs(sales), sub: inv.length + ' invoices · all time', icon:'📊', color:'#16a34a', bg:'#dcfce7', action:'total-sales' },
+    { label:"Today's Sales", value: rs(todaySales), sub: 'updated today', icon:'📈', color:'#3b82f6', bg:'#dbeafe', action:'today-sales' },
+    { label:'Customer Due', value: rs(due), sub: custWithDue + ' customers owe you', icon:'👥', color:'#dc2626', bg:'#fee2e2', action:'cust-due' },
+    { label:'Overdue 30+ days', value: rs(overdue.total), sub: overdue.list.length + ' overdue invoices', icon:'⚠️', color:'#991b1b', bg:'#fecaca', action:'overdue30' },
+    { label:'Supplier Due', value: rs(supDue), sub: supWithDue + ' suppliers to pay', icon:'🚚', color:'#c79a28', bg:'#fef3c7', action:'sup-due' }
   ];
+
+  // ---- Category color map ----
+  const catColors = {
+    'Fertilizer': '#16a34a',
+    'Pesticide': '#dc2626',
+    'Insecticide': '#dc2626',
+    'Fungicide': '#8b5cf6',
+    'Herbicide': '#f97316',
+    'Seed': '#f59e0b',
+    'Equipment': '#3b82f6',
+    'Spreader': '#06b6d4',
+    'PGR': '#ec4899',
+    'Bio stimulant': '#84cc16',
+    'Micro Nutrient': '#a855f7',
+    'Other': '#6b7280'
+  };
+  const catColor = (c) => catColors[c] || '#6b7280';
+
+  // ---- Render ----
   content.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:16px">
-      <div class="page-head"><div><h1 style="font-size:22px;font-weight:700">Dashboard</h1><p style="color:var(--s500);font-size:13px">Welcome back, ${esc(SETTINGS.owner_name)}</p></div><div class="page-actions">${reportButtonsHTML('dash')}</div></div>
-      <div class="grid-4">${cards.map(([l,v,ic,bg,act])=>`<div class="card" data-action="${act}" style="cursor:pointer;transition:.15s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''"><div class="stat-icon" style="background:${bg}">${ic}</div><div style="font-size:11px;color:var(--s500)">${l}</div><div style="font-size:19px;font-weight:700;margin-top:2px">${v}</div><div style="font-size:10px;color:var(--s400);margin-top:4px">Click to view</div></div>`).join('')}</div>
-      <div class="grid-2">
-        <div class="card"><h2 style="font-weight:600;margin-bottom:12px">Quick actions</h2>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <a href="#/invoice/new" class="btn btn-primary" style="justify-content:center">+ New Invoice</a>
-            <a href="#/customers" class="btn btn-ghost" style="justify-content:center">+ Customer</a>
-            <a href="#/products" class="btn btn-ghost" style="justify-content:center">+ Product</a>
-            <a href="#/suppliers" class="btn btn-ghost" style="justify-content:center">+ Supplier</a>
-          </div></div>
-        <div class="card"><h2 style="font-weight:600;margin-bottom:12px">Low stock alerts</h2>
-          ${low.length===0?'<p style="color:var(--s500);font-size:13px">All products well-stocked</p>':low.slice(0,6).map(p=>{const d=productDisplay(p);return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span>${esc(p.name)}</span><span style="color:var(--r600);font-weight:500">${esc(d.stockLabel)}</span></div>`;}).join('')}</div>
+    <div style="display:flex;flex-direction:column;gap:20px">
+
+      <div class="page-head" style="margin-bottom:0">
+        <div>
+          <h1 style="font-size:24px;font-weight:700">Dashboard</h1>
+          <p style="color:var(--s500);font-size:13px;margin-top:2px">Welcome back, ${esc(SETTINGS.owner_name)}</p>
+        </div>
+        <div class="page-actions">${reportButtonsHTML('dash')}</div>
       </div>
-    </div>`;
-  const kpis = [['Total Sales',rs(sales)],["Today's Sales",rs(todaySales)],['Customer Due',rs(due)],['Supplier Due',rs(supDue)],['Total Customers',DB.customers.length]];
-  const tables = [{title:'Low Stock Products',head:['Product','Stock','Low Alert'],rows: low.length? low.map(p=>{const d=productDisplay(p);return [p.name,d.stockLabel,fmtNum(p.low_stock_alert)+' '+((p.dual)?p.base_unit:p.unit)];}) : []}];
-  bindReport('dash','Business Summary',kpis,tables);
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+        ${cards.map(c => `
+          <div class="card" data-action="${c.action}" style="padding:18px;cursor:pointer;position:relative;overflow:hidden;transition:.15s">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="font-size:11px;color:var(--s500);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">${c.label}</div>
+              <div style="width:28px;height:28px;border-radius:8px;background:${c.bg};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${c.icon}</div>
+            </div>
+            <div style="font-size:22px;font-weight:700;color:${c.color};margin-top:10px;line-height:1.1">${c.value}</div>
+            <div style="font-size:11px;color:var(--s400);margin-top:6px">${c.sub}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px">
+        <div class="card" style="padding:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3 style="font-size:15px;font-weight:600;color:var(--s700)">Sales Trend</h3>
+            <span style="font-size:11px;color:var(--s500)">Last 12 months</span>
+          </div>
+          <div style="position:relative;height:260px"><canvas id="dash-chart"></canvas></div>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:15px;font-weight:600;color:var(--s700);margin-bottom:14px">Parties Overview</h3>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 16px">
+              <div style="font-size:10px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Suppliers</div>
+              <div style="font-size:26px;font-weight:700;color:#1e3a8a;margin-top:4px">${DB.suppliers.length}</div>
+              <div style="font-size:11px;color:#1e40af;margin-top:2px">${supWithDue} have outstanding due</div>
+            </div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px">
+              <div style="font-size:10px;color:#166534;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Customers</div>
+              <div style="font-size:26px;font-weight:700;color:#14532d;margin-top:4px">${DB.customers.length}</div>
+              <div style="font-size:11px;color:#166534;margin-top:2px">${custWithDue} have outstanding due</div>
+            </div>
+            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:12px;padding:14px 16px">
+              <div style="font-size:10px;color:#854d0e;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Products</div>
+              <div style="font-size:26px;font-weight:700;color:#713f12;margin-top:4px">${DB.products.length}</div>
+              <div style="font-size:11px;color:#854d0e;margin-top:2px">${lowCount} low stock · ${outCount} out of stock</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:20px">
+        <h3 style="font-size:15px;font-weight:600;color:var(--s700);margin-bottom:14px">Quick Actions</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+          <a href="#/invoice/new" class="btn btn-primary" style="justify-content:center">+ New Invoice</a>
+          <a href="#/customers" class="btn btn-ghost" style="justify-content:center">+ Customer</a>
+          <a href="#/products" class="btn btn-ghost" style="justify-content:center">+ Product</a>
+          <a href="#/suppliers" class="btn btn-ghost" style="justify-content:center">+ Supplier</a>
+        </div>
+      </div>
+
+      <div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="font-size:15px;font-weight:600;color:var(--s700)">Low Stock Alerts</h3>
+          <span style="font-size:11px;color:var(--s500)">${low.length} items need restocking</span>
+        </div>
+        ${low.length === 0 
+          ? '<p style="color:var(--s400);font-size:13px;text-align:center;padding:20px">All products well-stocked 🎉</p>'
+          : `<div style="overflow-x:auto"><table>
+              <thead><tr>
+                <th>Product</th>
+                <th>Category</th>
+                <th style="text-align:right">Stock</th>
+                <th style="text-align:right">Alert At</th>
+                <th style="text-align:right">Action</th>
+              </tr></thead>
+              <tbody>
+                ${low.slice(0, 15).map(p => {
+                  const d = productDisplay(p);
+                  const unit = p.dual ? p.base_unit : p.unit;
+                  const cat = p.category || 'Other';
+                  const color = catColor(cat);
+                  return '<tr>' +
+                    '<td style="font-weight:500">' + esc(p.name) + '</td>' +
+                    '<td><span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;background:' + color + '15;color:' + color + '">' + esc(cat) + '</span></td>' +
+                    '<td style="text-align:right;font-weight:600;color:' + (isOutOfStock(p) ? '#dc2626' : '#d97706') + '">' + esc(d.stockLabel) + '</td>' +
+                    '<td style="text-align:right;color:var(--s500);font-size:12px">' + fmtNum(p.low_stock_alert) + ' ' + unit + '</td>' +
+                    '<td style="text-align:right"><button class="btn btn-ghost btn-sm" data-view-prod="' + p.id + '">View</button></td>' +
+                  '</tr>';
+                }).join('')}
+              </tbody>
+            </table></div>
+            ${low.length > 15 ? '<div style="text-align:center;margin-top:12px"><a href="#/products" style="font-size:12px;color:var(--b700)">View all ' + low.length + ' products →</a></div>' : ''}
+          `}
+      </div>
+    </div>
+  `;
+
+  // ---- Sales Trend chart ----
+  if (window.__dashChart) { try { window.__dashChart.destroy(); } catch(e) {} window.__dashChart = null; }
+  const canvas = content.querySelector('#dash-chart');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 260);
+    gradient.addColorStop(0, 'rgba(22,163,74,0.25)');
+    gradient.addColorStop(1, 'rgba(22,163,74,0.01)');
+    window.__dashChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: prettyLabels,
+        datasets: [{
+          label: 'Sales',
+          data: monthlyValues,
+          borderColor: '#16a34a',
+          backgroundColor: gradient,
+          tension: 0.35,
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: '#16a34a',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: { label: c => 'Sales: ' + rs(c.parsed.y) }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { callback: v => '₹' + Number(v).toLocaleString('en-IN'), color: '#94a3b8', font: { size: 10 } },
+            grid: { color: '#f1f5f9' }
+          },
+          x: {
+            ticks: { color: '#94a3b8', font: { size: 10 } },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  // ---- KPI card click actions ----
   $$('#content [data-action]').forEach(el => {
     el.onclick = () => {
       const a = el.dataset.action;
@@ -767,6 +955,28 @@ function renderDashboard(content){
       else if(a === 'overdue30') showOverdueModal();
     };
   });
+
+  // ---- View product buttons ----
+  $$('#content [data-view-prod]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const prodId = btn.dataset.viewProd;
+      const p = DB.products.find(x => x.id === prodId);
+      location.hash = '#/products';
+      setTimeout(() => {
+        const searchInput = document.getElementById('prod-search');
+        if (searchInput && p) {
+          searchInput.value = p.name;
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, 250);
+    };
+  });
+
+  // ---- Report bindings (unchanged) ----
+  const kpis = [['Total Sales',rs(sales)],["Today's Sales",rs(todaySales)],['Customer Due',rs(due)],['Supplier Due',rs(supDue)],['Total Customers',DB.customers.length]];
+  const tables = [{title:'Low Stock Products',head:['Product','Stock','Low Alert'],rows: low.length? low.map(p=>{const d=productDisplay(p);return [p.name,d.stockLabel,fmtNum(p.low_stock_alert)+' '+((p.dual)?p.base_unit:p.unit)];}) : []}];
+  bindReport('dash','Business Summary',kpis,tables);
 }
 function showSalesModal(title, invoices){
   const total = invoices.reduce((s,i)=>s+Number(i.total),0);
