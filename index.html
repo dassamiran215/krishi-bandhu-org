@@ -4961,5 +4961,66 @@ DB.products.forEach(p => {
   injectToggleCard();
 })();
 </script>
+<script>
+/* ============================================================
+   FIX: Chrome silently blocks native confirm() on this origin.
+   Replaces confirmDlg() with our own modal, and re-fires the
+   original Del button after the user confirms.
+   Zero changes to existing code.
+   ============================================================ */
+(function(){
+  var CONFIRMED = false;
+  var MODAL_OPEN = false;
+  var pendingBtn = null;
+
+  // Every button that triggers a confirmation
+  var TRIGGER_SELECTOR = '[data-del], [data-del-inv], [data-del-pur], [data-del-bill], [data-pay-del], [data-del-ret], [data-del-exp], #btn-del, #btn-remove-logo';
+
+  // Remember which button was clicked (capture phase runs before onclick)
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest(TRIGGER_SELECTOR);
+    if (btn) pendingBtn = btn;
+  }, true);
+
+  // Reset internal state whenever any modal closes
+  var _closeModal = window.closeModal;
+  window.closeModal = function(){
+    MODAL_OPEN = false;
+    pendingBtn = null;
+    _closeModal.apply(this, arguments);
+  };
+
+  // Replace confirmDlg with our own DOM modal
+  window.confirmDlg = function(message, title){
+    if (CONFIRMED) { CONFIRMED = false; return true; }  // second pass → proceed
+
+    if (!MODAL_OPEN) {
+      MODAL_OPEN = true;
+      openModal(
+        '<h2 style="font-size:16px;font-weight:600;margin-bottom:10px">' + esc(title || 'Confirm') + '</h2>' +
+        '<p style="white-space:pre-wrap;font-size:13px;color:var(--s600);margin-bottom:18px">' + esc(message) + '</p>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn btn-ghost" id="cf-no">Cancel</button>' +
+          '<button class="btn btn-primary" id="cf-yes" style="background:var(--r600)">Delete</button>' +
+        '</div>',
+        function(root){
+          root.querySelector('#cf-no').onclick = function(){ closeModal(); };
+          root.querySelector('#cf-yes').onclick = function(){
+            var btn = pendingBtn;
+            pendingBtn = null;
+            closeModal();
+            CONFIRMED = true;
+            if (btn) btn.click();     // re-fire the original Del button
+          };
+        }
+      );
+    }
+    return false;   // first pass → handler bails, modal is now on screen
+  };
+
+  // Also route native confirm() through the same flow (My Shop → Remove logo)
+  window.confirm = function(message){ return confirmDlg(message, 'Confirm'); };
+})();
+</script>
 </body>
 </html>
