@@ -324,31 +324,58 @@ async function fetchAllInvoiceItemsPaginated() {
   return all;
 }
 
+// Universal pagination helper - bypasses the 1000-row limit for ANY table
+async function fetchAllRows(tableName, orderColumn, ascending) {
+  let all = [];
+  let pageSize = 1000;
+  let from = 0;
+  let safety = 0;
+  while (true) {
+    safety++;
+    if (safety > 200) break; // max 200,000 rows
+    try {
+      let query = sb.from(tableName).select('*').range(from, from + pageSize - 1);
+      if (orderColumn) query = query.order(orderColumn, { ascending: ascending });
+      let res = await query;
+      if (res.error) { console.warn(tableName + ' fetch error:', res.error.message); break; }
+      let chunk = res.data || [];
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    } catch (e) {
+      console.warn(tableName + ' fetch threw:', e.message);
+      break;
+    }
+  }
+  return all;
+}
+
 async function syncDB(){
   try{
+    // Fetch everything in parallel using the pagination helper
     const [cust, prod, inv, pays, sup, sinv, spays, ret, sett, allItems] = await Promise.all([
-      sb.from('customers').select('*').order('created_at',{ascending:false}),
-      sb.from('products').select('*').order('name'),
-      sb.from('invoices').select('*').order('invoice_date',{ascending:false}),
-      sb.from('payments').select('*').order('payment_date',{ascending:false}),
-      sb.from('suppliers').select('*').order('name'),
-      sb.from('supplier_invoices').select('*').order('bill_date',{ascending:false}),
-      sb.from('supplier_payments').select('*').order('payment_date',{ascending:false}),
-      sb.from('returns').select('*').order('return_date',{ascending:false}),
+      fetchAllRows('customers', 'created_at', false),
+      fetchAllRows('products', 'name', true),
+      fetchAllRows('invoices', 'invoice_date', false),
+      fetchAllRows('payments', 'payment_date', false),
+      fetchAllRows('suppliers', 'name', true),
+      fetchAllRows('supplier_invoices', 'bill_date', false),
+      fetchAllRows('supplier_payments', 'payment_date', false),
+      fetchAllRows('returns', 'return_date', false),
       sb.from('settings').select('*').eq('id',1).maybeSingle(),
       fetchAllInvoiceItemsPaginated()
     ]);
-    if(cust.error) console.warn('cust', cust.error.message);
-    if(prod.error) console.warn('prod', prod.error.message);
-    DB.customers = cust.data || [];
-    DB.products = prod.data || [];
-    DB.invoices = inv.data || [];
+
+    DB.customers = cust || [];
+    DB.products = prod || [];
+    DB.invoices = inv || [];
     DB.invoice_items = allItems || [];
-    DB.payments = pays.data || [];
-    DB.suppliers = sup.data || [];
-    DB.supplier_invoices = sinv.data || [];
-    DB.supplier_payments = spays.data || [];
-    DB.returns = ret.data || [];
+    DB.payments = pays || [];
+    DB.suppliers = sup || [];
+    DB.supplier_invoices = sinv || [];
+    DB.supplier_payments = spays || [];
+    DB.returns = ret || [];
+    
     if(sett.data){
       SETTINGS = {
         shop_name: sett.data.shop_name || 'Krishi Bandhu',
@@ -2800,9 +2827,8 @@ window.addEventListener('hashchange', route);
 
   // 1. Fetch expenses from Supabase
   async function syncExpenses() {
-    const { data, error } = await sb.from('expenses').select('*').order('expense_date', { ascending: false });
-    if (!error && data) ALL_EXPENSES = data;
-  }
+  ALL_EXPENSES = await fetchAllRows('expenses', 'expense_date', false);
+}
 
   // 2. Render the Expenses Page
   async function renderExpensesPage(content) {
@@ -3241,11 +3267,10 @@ window.addEventListener('hashchange', route);
 
   // ---- FETCH EXPENSES ----
   async function loadExpenses() {
-    try {
-      const { data, error } = await sb.from('expenses').select('*');
-      if (!error && data) expensesCache = data;
-    } catch (e) { console.warn('shop-health expenses', e); }
-  }
+  try {
+    expensesCache = await fetchAllRows('expenses');
+  } catch (e) { console.warn('shop-health expenses', e); }
+}
 
   // ---- RANGE HELPERS ----
   function rangeFor(preset, cf, ct) {
