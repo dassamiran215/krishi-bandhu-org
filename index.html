@@ -2441,7 +2441,7 @@ window.addEventListener('hashchange', route);
   const originalOpenProductForm = window.openProductForm;
   window.openProductForm = function(existing) {
     const p = existing || {name:'',dual:false,unit:'kg',base_unit:'kg',pack_unit:'bag',pack_size:50,price:0,cost:0,price_base:0,price_pack:0,stock:0,low_stock_alert:5,category:'',primary_unit:'base_unit'};
-    const CATEGORIES = ['Insecticide', 'Fungicide', 'Herbicide', 'Spreader', 'PGR', 'Bio stimulant', 'Fertilizer', 'Micro Nutrient'];
+    const CATEGORIES = ['Insecticide', 'Fungicide', 'Herbicide', 'Spreader', 'PGR', 'Bio stimulant', 'Fertilizer', 'Micro Nutrient', 'Seed'];
     const catOptions = CATEGORIES.map(c => `<option value="${c}" ${p.category === c ? 'selected' : ''}>${c}</option>`).join('');
 
     openModal(`
