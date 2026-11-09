@@ -5047,5 +5047,216 @@ DB.products.forEach(p => {
   window.confirm = function(message){ return confirmDlg(message, 'Confirm'); };
 })();
 </script>
+   <!-- ========================================== -->
+<!-- STEP 2: SEEDS TAB (STOCK, SALES, PROFIT/LOSS) -->
+<!-- ========================================== -->
+<script>
+(function() {
+  'use strict';
+
+  // 1. Inject Sidebar Link
+  function injectSeedSidebar() {
+    const hash = location.hash || '#/';
+    const isActive = hash === '#/seeds' ? 'active' : '';
+    
+    // Desktop Sidebar
+    const nav = document.querySelector('.nav');
+    if (nav && !nav.querySelector('a[href="#/seeds"]')) {
+      const link = document.createElement('a');
+      link.href = '#/seeds';
+      link.className = isActive;
+      link.innerHTML = '<span style="font-size:15px">🌱</span>Seeds';
+      // Insert after Products
+      const anchor = nav.querySelector('a[href="#/products"]');
+      if (anchor) anchor.insertAdjacentElement('afterend', link); else nav.appendChild(link);
+    }
+
+    // Mobile Nav
+    const mnav = document.getElementById('mobile-nav');
+    if (mnav && !mnav.querySelector('a[href="#/seeds"]')) {
+      const link = document.createElement('a');
+      link.href = '#/seeds';
+      const style = hash === '#/seeds' ? 'color:var(--b700);font-weight:500' : 'color:var(--s500)';
+      link.style.cssText = `flex:0 0 72px;text-align:center;font-size:10px;${style};padding:4px 2px`;
+      link.innerHTML = '🌱<div style="font-size:9px">Seeds</div>';
+      const anchor = mnav.querySelector('a[href="#/products"]');
+      if (anchor) anchor.insertAdjacentElement('afterend', link); else mnav.appendChild(link);
+    }
+  }
+
+  // 2. Render Function
+  async function renderSeeds(content) {
+    // Find all Seed products
+    const seedProducts = DB.products.filter(p => p.category === 'Seed');
+    const seedProductIds = seedProducts.map(p => p.id);
+
+    // Calculate Stock Value & Qty
+    let totalStockCost = 0;
+    let totalStockRetail = 0;
+    let totalStockQty = 0;
+
+    seedProducts.forEach(p => {
+      const stock = Number(p.stock) || 0;
+      const cost = Number(p.cost) || 0;
+      const retail = p.dual ? (Number(p.price_base) || 0) : (Number(p.price) || 0);
+      
+      totalStockCost += (stock * cost);
+      totalStockRetail += (stock * retail);
+      totalStockQty += stock;
+    });
+
+    // Calculate Sales & Profit
+    let totalRevenue = 0;
+    let totalCost = 0;
+    
+    // We need to find all invoice_items that belong to a Seed product
+    const seedSalesItems = DB.invoice_items.filter(item => seedProductIds.includes(item.product_id));
+
+    seedSalesItems.forEach(item => {
+      const p = seedProducts.find(x => x.id === item.product_id);
+      const costPerBase = p ? (Number(p.cost) || 0) : 0;
+      const baseQty = lineDeductBaseQty(item);
+      const itemCost = baseQty * costPerBase;
+      const itemRev = Number(item.total) || 0;
+
+      totalRevenue += itemRev;
+      totalCost += itemCost;
+    });
+
+    const totalProfit = totalRevenue - totalCost;
+    const isProfit = totalProfit >= 0;
+    const profitColor = isProfit ? 'var(--b700)' : 'var(--r600)';
+    const profitBg = isProfit ? '#f0fdf4' : '#fef2f2';
+
+    // Build UI
+    content.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        
+        <div class="page-head">
+          <div>
+            <h1 style="font-size:22px;font-weight:700">Seeds Dashboard</h1>
+            <p style="color:var(--s500);font-size:13px">Stock, sales, and profit/loss for all seed products.</p>
+          </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid-3">
+          <div class="card" style="border-left:4px solid #16a34a;">
+            <div style="font-size:11px;color:var(--s500);font-weight:700;text-transform:uppercase;">Seed Stock (Cost Value)</div>
+            <div style="font-size:24px;font-weight:700;color:#16a34a;margin-top:4px;">${rs(totalStockCost)}</div>
+            <div style="font-size:11px;color:var(--s400);margin-top:4px;">Retail Value: ${rs(totalStockRetail)} | Qty: ${fmtNum(totalStockQty)}</div>
+          </div>
+          
+          <div class="card" style="border-left:4px solid #3b82f6;">
+            <div style="font-size:11px;color:var(--s500);font-weight:700;text-transform:uppercase;">Seed Sales (Revenue)</div>
+            <div style="font-size:24px;font-weight:700;color:#3b82f6;margin-top:4px;">${rs(totalRevenue)}</div>
+            <div style="font-size:11px;color:var(--s400);margin-top:4px;">From ${seedSalesItems.length} items sold</div>
+          </div>
+          
+          <div class="card" style="border-left:4px solid ${profitColor}; background:${profitBg};">
+            <div style="font-size:11px;color:var(--s500);font-weight:700;text-transform:uppercase;">Seed ${isProfit ? 'Profit' : 'Loss'}</div>
+            <div style="font-size:24px;font-weight:700;color:${profitColor};margin-top:4px;">${rs(totalProfit)}</div>
+            <div style="font-size:11px;color:var(--s400);margin-top:4px;">Cost of goods: ${rs(totalCost)}</div>
+          </div>
+        </div>
+
+        <!-- Products Table -->
+        <div class="card" style="overflow-x:auto">
+          <h2 style="font-weight:600;margin-bottom:12px;">Seed Inventory & Performance</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th style="text-align:right">Stock</th>
+                <th style="text-align:right">Sold Qty</th>
+                <th style="text-align:right">Revenue</th>
+                <th style="text-align:right">Cost</th>
+                <th style="text-align:right">Profit/Loss</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${seedProducts.length === 0 
+                ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--s500)">No products found with category "Seed".</td></tr>'
+                : seedProducts.map(p => {
+                    const d = productDisplay(p);
+                    const pItems = seedSalesItems.filter(item => item.product_id === p.id);
+                    
+                    let soldQty = 0;
+                    let pRev = 0;
+                    let pCost = 0;
+                    
+                    pItems.forEach(item => {
+                      soldQty += lineDeductBaseQty(item);
+                      pRev += Number(item.total) || 0;
+                      pCost += (lineDeductBaseQty(item) * (Number(p.cost) || 0));
+                    });
+                    
+                    const pProfit = pRev - pCost;
+                    const pColor = pProfit >= 0 ? 'var(--b700)' : 'var(--r600)';
+                    const unit = p.dual ? p.base_unit : p.unit;
+
+                    return `
+                      <tr>
+                        <td style="font-weight:500">${esc(p.name)}</td>
+                        <td style="text-align:right">${esc(d.stockLabel)}</td>
+                        <td style="text-align:right">${fmtNum(soldQty)} ${esc(unit)}</td>
+                        <td style="text-align:right;color:#3b82f6;font-weight:500;">${rs(pRev)}</td>
+                        <td style="text-align:right;color:var(--s500);">${rs(pCost)}</td>
+                        <td style="text-align:right;font-weight:700;color:${pColor};">${rs(pProfit)}</td>
+                      </tr>
+                    `;
+                  }).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // 3. Hook into Router
+  const _origRoute = window.route;
+  const _origRenderLayout = window.renderLayout;
+
+  if (typeof _origRenderLayout === 'function') {
+    window.renderLayout = function() {
+      _origRenderLayout.apply(this, arguments);
+      try { injectSeedSidebar(); } catch(e) {}
+    };
+  }
+
+  window.route = async function() {
+    if (location.hash === '#/seeds' && typeof SESSION !== 'undefined' && SESSION) {
+      try {
+        window.renderLayout();
+        const content = document.getElementById('content');
+        if (content) await renderSeeds(content);
+        return;
+      } catch (e) {
+        console.error('Seeds route error:', e);
+        toast('Seeds error: ' + e.message, 'error');
+      }
+    }
+    return _origRoute.apply(this, arguments);
+  };
+
+  try { window.removeEventListener('hashchange', _origRoute); } catch(e) {}
+  window.addEventListener('hashchange', window.route);
+
+  // Safety net for refresh
+  let tries = 0;
+  (function waitBoot() {
+    tries++;
+    if (tries > 60) return;
+    if (location.hash !== '#/seeds') return;
+    if (typeof SESSION === 'undefined' || !SESSION) { setTimeout(waitBoot, 300); return; }
+    if (document.getElementById('content') && !document.getElementById('content').querySelector('h1')) {
+        window.route();
+    }
+  })();
+  
+  setInterval(injectSeedSidebar, 500);
+})();
+</script>
 </body>
 </html>
