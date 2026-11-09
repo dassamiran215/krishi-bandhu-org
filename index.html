@@ -5048,7 +5048,7 @@ DB.products.forEach(p => {
 })();
 </script>
    <!-- ========================================== -->
-<!-- STEP 2: SEEDS TAB (STOCK, SALES, PROFIT/LOSS) -->
+<!-- STEP 2: SEEDS TAB (UPDATED TO HANDLE DELETED INVOICES) -->
 <!-- ========================================== -->
 <script>
 (function() {
@@ -5059,19 +5059,16 @@ DB.products.forEach(p => {
     const hash = location.hash || '#/';
     const isActive = hash === '#/seeds' ? 'active' : '';
     
-    // Desktop Sidebar
     const nav = document.querySelector('.nav');
     if (nav && !nav.querySelector('a[href="#/seeds"]')) {
       const link = document.createElement('a');
       link.href = '#/seeds';
       link.className = isActive;
       link.innerHTML = '<span style="font-size:15px">🌱</span>Seeds';
-      // Insert after Products
       const anchor = nav.querySelector('a[href="#/products"]');
       if (anchor) anchor.insertAdjacentElement('afterend', link); else nav.appendChild(link);
     }
 
-    // Mobile Nav
     const mnav = document.getElementById('mobile-nav');
     if (mnav && !mnav.querySelector('a[href="#/seeds"]')) {
       const link = document.createElement('a');
@@ -5086,11 +5083,12 @@ DB.products.forEach(p => {
 
   // 2. Render Function
   async function renderSeeds(content) {
-    // Find all Seed products
     const seedProducts = DB.products.filter(p => p.category === 'Seed');
     const seedProductIds = seedProducts.map(p => p.id);
 
-    // Calculate Stock Value & Qty
+    // ✅ NEW: Only count items whose invoice still exists (ignores orphaned items from deleted invoices)
+    const validInvoiceIds = DB.invoices.map(inv => inv.id);
+
     let totalStockCost = 0;
     let totalStockRetail = 0;
     let totalStockQty = 0;
@@ -5105,12 +5103,14 @@ DB.products.forEach(p => {
       totalStockQty += stock;
     });
 
-    // Calculate Sales & Profit
     let totalRevenue = 0;
     let totalCost = 0;
     
-    // We need to find all invoice_items that belong to a Seed product
-    const seedSalesItems = DB.invoice_items.filter(item => seedProductIds.includes(item.product_id));
+    // ✅ NEW: Filter using validInvoiceIds
+    const seedSalesItems = DB.invoice_items.filter(item => 
+      seedProductIds.includes(item.product_id) && 
+      validInvoiceIds.includes(item.invoice_id)
+    );
 
     seedSalesItems.forEach(item => {
       const p = seedProducts.find(x => x.id === item.product_id);
@@ -5128,7 +5128,6 @@ DB.products.forEach(p => {
     const profitColor = isProfit ? 'var(--b700)' : 'var(--r600)';
     const profitBg = isProfit ? '#f0fdf4' : '#fef2f2';
 
-    // Build UI
     content.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:16px">
         
@@ -5139,7 +5138,6 @@ DB.products.forEach(p => {
           </div>
         </div>
 
-        <!-- KPI Cards -->
         <div class="grid-3">
           <div class="card" style="border-left:4px solid #16a34a;">
             <div style="font-size:11px;color:var(--s500);font-weight:700;text-transform:uppercase;">Seed Stock (Cost Value)</div>
@@ -5160,7 +5158,6 @@ DB.products.forEach(p => {
           </div>
         </div>
 
-        <!-- Products Table -->
         <div class="card" style="overflow-x:auto">
           <h2 style="font-weight:600;margin-bottom:12px;">Seed Inventory & Performance</h2>
           <table>
@@ -5179,7 +5176,8 @@ DB.products.forEach(p => {
                 ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--s500)">No products found with category "Seed".</td></tr>'
                 : seedProducts.map(p => {
                     const d = productDisplay(p);
-                    const pItems = seedSalesItems.filter(item => item.product_id === p.id);
+                    // ✅ NEW: Filter per-product using validInvoiceIds
+                    const pItems = seedSalesItems.filter(item => item.product_id === p.id && validInvoiceIds.includes(item.invoice_id));
                     
                     let soldQty = 0;
                     let pRev = 0;
@@ -5243,7 +5241,6 @@ DB.products.forEach(p => {
   try { window.removeEventListener('hashchange', _origRoute); } catch(e) {}
   window.addEventListener('hashchange', window.route);
 
-  // Safety net for refresh
   let tries = 0;
   (function waitBoot() {
     tries++;
