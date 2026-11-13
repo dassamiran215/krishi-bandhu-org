@@ -149,7 +149,13 @@ window.addEventListener('unhandledrejection', function(e){ var el=document.getEl
 
 const SUPABASE_URL = 'https://tzpzsnrdaeoddtvnmkqr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_XssPJCmMr43FJZ7_pb2wzw_2x9hcl6k';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    autoRefreshToken: true,   // Automatically refreshes the token in the background
+    persistSession: true,     // Saves the session in local storage
+    detectSessionInUrl: true  // Helps with magic links if you use them later
+  }
+});
 
 const BASE_UNITS = ['kg','gram','ton','quintal','ml','lit','piece'];
 const PACK_UNITS = ['bottle','bag','pack','box','sack','pouch','sachet','tin','tube','can','jar','dozen','piece'];
@@ -417,7 +423,16 @@ function applyFavicon(){
 async function initAuth(){
   const { data:{ session } } = await sb.auth.getSession();
   SESSION = session;
-  sb.auth.onAuthStateChange((_e, s) => { SESSION = s; });
+  
+  sb.auth.onAuthStateChange((event, s) => { 
+    SESSION = s; 
+    
+    // If the token completely fails to refresh, or user logs out, send to login
+    if (event === 'SIGNED_OUT') {
+      location.hash = '#/';
+      renderLogin();
+    }
+  });
 }
 async function login(email, password){
   const { error } = await sb.auth.signInWithPassword({ email, password });
@@ -2427,6 +2442,24 @@ window.addEventListener('hashchange', route);
   }catch(e){ console.error('boot', e); }
   await route();
 })();
+   // ==========================================
+// FIX: Auto-refresh token when returning to the tab
+// ==========================================
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && SESSION) {
+    // When you click back on the tab, force a session refresh
+    const { data, error } = await sb.auth.refreshSession();
+    
+    if (error || !data.session) {
+      // If the refresh token itself expired (e.g., you were gone for weeks), log out safely
+      console.warn("Session expired entirely. Please log in again.");
+      await logout();
+    } else {
+      // Token refreshed successfully! Update the local session.
+      SESSION = data.session;
+    }
+  }
+});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/escpos-buffer@4.0.5/dist/bundle.umd.js"></script>
 <!-- Printer Libraries -->
